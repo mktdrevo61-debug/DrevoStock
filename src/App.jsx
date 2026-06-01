@@ -957,7 +957,7 @@ export default function App() {
         </h1>
         <div style={{ display: 'flex', gap: '1rem' }}>
           <button onClick={() => {
-              requestPassword("753951", "Validação obrigatória: Senha do Administrador de Engenharia.", () => {
+              requestPassword("753951", "Senha do Administrador de Engenharia", () => {
                 setShowZerarModal(true);
               });
             }} style={{
@@ -966,7 +966,7 @@ export default function App() {
             <AlertTriangle size={16} /> Zerar Fábrica
           </button>
           <button onClick={() => {
-              requestPassword("753951", "Validação obrigatória: Senha do Administrador de Engenharia.", () => {
+              requestPassword("753951", "Senha do Administrador de Engenharia", () => {
                 setScannedPieces([]); setLastScanned(null); setRejectedPieces([]);
               });
             }} style={{
@@ -981,7 +981,7 @@ export default function App() {
             {isUpdatingReport ? 'Carregando...' : '📊 Atualizar Planilha'}
           </button>
           <button onClick={() => {
-              requestPassword("753951", "Validação obrigatória: Senha do Administrador de Engenharia.", handleSavePlanilhas);
+              requestPassword("753951", "Senha do Administrador de Engenharia", handleSavePlanilhas);
             }} style={{ 
               display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'var(--success)', color: 'white', padding: '0.5rem 1.5rem', borderRadius: '9999px', border: 'none', cursor: 'pointer', fontWeight: 'bold' 
             }}>
@@ -1210,17 +1210,17 @@ export default function App() {
                   </div>
                   <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.75rem' }}>
                     <button onClick={() => {
-                      requestPassword("753951", "Validação obrigatória: Senha do Administrador de Engenharia.", () => {
+                      requestPassword("753951", "Senha do Administrador de Engenharia", () => {
                         handleAdicionarEspacoGondola(g.id);
                       });
                     }} style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem', borderRadius: '0.5rem', background: '#9b59b6', color: 'white', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>+</button>
                     <button onClick={() => {
-                      requestPassword("1234", "Validação obrigatória: Senha do Operador.", () => {
+                      requestPassword("1234", "Senha do Operador.", () => {
                         handleEsvaziar(g.id, 'metade');
                       });
                     }} style={{ flex: 1, padding: '0.4rem', fontSize: '0.75rem', borderRadius: '0.5rem', background: 'var(--bg-color)', border: '1px solid var(--text-muted)', color: 'var(--text-main)', cursor: 'pointer', transition: 'background 0.2s' }}>Esvaziar Metade</button>
                     <button onClick={() => {
-                      requestPassword("1234", "Validação obrigatória: Senha do Operador.", () => {
+                      requestPassword("1234", "Senha do Operador.", () => {
                         handleEsvaziar(g.id, 'tudo');
                       });
                     }} style={{ flex: 1, padding: '0.4rem', fontSize: '0.75rem', borderRadius: '0.5rem', background: 'rgba(248, 49, 70, 0.15)', color: 'var(--error)', border: '1px solid var(--error)', cursor: 'pointer', transition: 'opacity 0.2s' }}>Esvaziar Tudo</button>
