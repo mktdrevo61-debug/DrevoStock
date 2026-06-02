@@ -439,6 +439,8 @@ export default function App() {
           envHierarchy['PEÇAS GIGANTES'] = gigantesStacks;
         }
 
+
+
         setEnvironments(envHierarchy);
 
         // PASSAGEM 5: Alocação nas Gôndolas
@@ -449,7 +451,8 @@ export default function App() {
           }),
           { id: 'Expedição', capacity: 7760, historical: historicalState['Expedição'] || 0, current: 0, used: historicalState['Expedição'] || 0, isSpecial: true },
           { id: 'Peças Grandes', capacity: 5200, historical: historicalState['Peças Grandes'] || 0, current: 0, used: historicalState['Peças Grandes'] || 0, isSpecial: true },
-          { id: 'Peças Gigantes', capacity: 1840, historical: historicalState['Peças Gigantes'] || 0, current: 0, used: historicalState['Peças Gigantes'] || 0, isSpecial: true }
+          { id: 'Peças Gigantes', capacity: 1840, historical: historicalState['Peças Gigantes'] || 0, current: 0, used: historicalState['Peças Gigantes'] || 0, isSpecial: true },
+          { id: 'Temporária', capacity: 5530, historical: historicalState['Temporária'] || 0, current: 0, used: historicalState['Temporária'] || 0, isSpecial: true, isTemporary: true }
         ];
         
         const currentAllocation = {};
@@ -517,13 +520,9 @@ export default function App() {
               // Quebrar módulos
               for (const mod of env.modules) {
                 let modGondola = genericGondolas.find(g => g.used + mod.space <= g.capacity);
-                if (!modGondola) {
-                  let bestGondola = genericGondolas[0];
-                  for (let i = 1; i < genericGondolas.length; i++) {
-                    if (genericGondolas[i].used < bestGondola.used) bestGondola = genericGondolas[i];
-                  }
-                  modGondola = bestGondola;
-                }
+                 if (!modGondola) {
+                   modGondola = tempGondolas.find(g => g.id === 'Temporária');
+                 }
                 modGondola.used += mod.space;
                 modGondola.current += mod.space;
                 mod.pieces.forEach(p => { currentAllocation[p.displayId] = modGondola.id; });
@@ -1177,11 +1176,37 @@ export default function App() {
             <Box size={24} />
             Alocação de Gôndolas
           </h2>
+
+          {gondolas.some(g => g.id === 'Temporária' && (g.used + (gondolaExtraSpaces[g.id] || 0)) > 0) && (
+            <div style={{
+              background: 'rgba(230, 126, 34, 0.1)',
+              border: '1px solid #e67e22',
+              color: '#e67e22',
+              padding: '1rem',
+              borderRadius: '0.75rem',
+              marginBottom: '1rem',
+              fontSize: '0.85rem',
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '0.5rem',
+              lineHeight: '1.4'
+            }}>
+              <AlertCircle size={20} style={{ flexShrink: 0, marginTop: '2px' }} />
+              <div>
+                <strong>Atenção: Transbordo de Produção!</strong><br />
+                O projeto atual excedeu a capacidade das gôndolas padrão. Uma <strong>Gôndola Temporária</strong> foi gerada automaticamente para comportar o excesso.
+              </div>
+            </div>
+          )}
           
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             {gondolas.map(g => {
               const extraSpace = gondolaExtraSpaces[g.id] || 0;
               const totalUsed = g.used + extraSpace;
+              
+              if (g.id === 'Temporária' && totalUsed === 0 && g.current === 0 && g.historical === 0) {
+                return null;
+              }
               
               const percHist = Math.min(100, (g.historical / g.capacity) * 100);
               const percCurr = Math.min(100 - percHist, (g.current / g.capacity) * 100);
@@ -1189,11 +1214,16 @@ export default function App() {
               const isOverfull = totalUsed > g.capacity;
               
               return (
-                <div key={g.id} style={{ background: 'var(--gondola-bg)', padding: '1.25rem', borderRadius: '1rem', border: '1px solid var(--gondola-border)', borderTop: isOverfull ? '4px solid var(--error)' : '4px solid var(--primary)', boxShadow: 'var(--shadow-soft)' }}>
+                <div key={g.id} style={{ background: 'var(--gondola-bg)', padding: '1.25rem', borderRadius: '1rem', border: '1px solid var(--gondola-border)', borderTop: isOverfull ? '4px solid var(--error)' : (g.id === 'Temporária' ? '4px solid #e67e22' : '4px solid var(--primary)'), boxShadow: 'var(--shadow-soft)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', fontWeight: 'bold' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <span>{g.isSpecial ? '' : 'Gôndola '}{g.id}</span>
-                      {isOverfull && g.isSpecial && (
+                      <span>{g.isSpecial && g.id !== 'Temporária' ? '' : (g.id === 'Temporária' ? '' : 'Gôndola ')}{g.id}</span>
+                      {g.id === 'Temporária' && (
+                        <span style={{ fontSize: '0.75rem', background: '#e67e22', color: 'white', padding: '0.2rem 0.5rem', borderRadius: '4px', fontWeight: 'bold' }}>
+                          Transbordo (Excesso)
+                        </span>
+                      )}
+                      {isOverfull && g.isSpecial && g.id !== 'Temporária' && (
                         <span style={{ fontSize: '0.7rem', background: 'var(--error)', color: 'white', padding: '0.2rem 0.5rem', borderRadius: '4px' }}>
                           Necessário empilhar ambientes
                         </span>
