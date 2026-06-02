@@ -38,6 +38,36 @@ export default function App() {
   const [gondolaExtraSpaces, setGondolaExtraSpaces] = useState({});
   const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw6JIya9obA03F8SkW7TIfmrsalMLyIhh1OEuH6CvqTMYK7PtLoPauthj5ZjdN5Rlme/exec";
   
+  const [suspendedProjects, setSuspendedProjects] = useState(() => {
+    const saved = localStorage.getItem('suspendedProjects');
+    if (saved) return JSON.parse(saved);
+    return [];
+  });
+
+  const getSuspendedReservations = (suspendedList) => {
+    const reservations = {};
+    suspendedList.forEach(proj => {
+      const projEnv = proj.environments;
+      for (const envName in projEnv) {
+        for (const modId in projEnv[envName]) {
+          const mod = projEnv[envName][modId];
+          if (!mod.pieces || mod.pieces.length === 0) continue;
+          
+          const firstPiece = mod.pieces[0];
+          const gondolaId = proj.allocation[firstPiece.displayId];
+          if (!gondolaId) continue;
+
+          const minDims = mod.pieces.map(p => Math.min(p.comprimento, p.largura));
+          const maxWidth = Math.max(...minDims);
+          const space = maxWidth + SPACING; // SPACING é 80
+
+          reservations[gondolaId] = (reservations[gondolaId] || 0) + space;
+        }
+      }
+    });
+    return reservations;
+  };
+  
   const inputRef = useRef(null);
 
   const [passwordModal, setPasswordModal] = useState({ isOpen: false, expectedPassword: '', message: '', onSuccess: null });
@@ -444,15 +474,18 @@ export default function App() {
         setEnvironments(envHierarchy);
 
         // PASSAGEM 5: Alocação nas Gôndolas
+        const reservations = getSuspendedReservations(suspendedProjects);
+        
         let tempGondolas = [
           ...Array.from({length: 7}, (_, i) => {
             const id = (i + 1).toString();
-            return { id, capacity: 5530, historical: historicalState[id] || 0, current: 0, used: historicalState[id] || 0, isSpecial: false };
+            const resSpace = reservations[id] || 0;
+            return { id, capacity: 5530, historical: historicalState[id] || 0, current: 0, used: (historicalState[id] || 0) + resSpace, reserved: resSpace, isSpecial: false };
           }),
-          { id: 'Expedição', capacity: 7760, historical: historicalState['Expedição'] || 0, current: 0, used: historicalState['Expedição'] || 0, isSpecial: true },
-          { id: 'Peças Grandes', capacity: 5200, historical: historicalState['Peças Grandes'] || 0, current: 0, used: historicalState['Peças Grandes'] || 0, isSpecial: true },
-          { id: 'Peças Gigantes', capacity: 1840, historical: historicalState['Peças Gigantes'] || 0, current: 0, used: historicalState['Peças Gigantes'] || 0, isSpecial: true },
-          { id: 'Temporária', capacity: 5530, historical: historicalState['Temporária'] || 0, current: 0, used: historicalState['Temporária'] || 0, isSpecial: true, isTemporary: true }
+          { id: 'Expedição', capacity: 7760, historical: historicalState['Expedição'] || 0, current: 0, used: (historicalState['Expedição'] || 0) + (reservations['Expedição'] || 0), reserved: reservations['Expedição'] || 0, isSpecial: true },
+          { id: 'Peças Grandes', capacity: 5200, historical: historicalState['Peças Grandes'] || 0, current: 0, used: (historicalState['Peças Grandes'] || 0) + (reservations['Peças Grandes'] || 0), reserved: reservations['Peças Grandes'] || 0, isSpecial: true },
+          { id: 'Peças Gigantes', capacity: 1840, historical: historicalState['Peças Gigantes'] || 0, current: 0, used: (historicalState['Peças Gigantes'] || 0) + (reservations['Peças Gigantes'] || 0), reserved: reservations['Peças Gigantes'] || 0, isSpecial: true },
+          { id: 'Transbordo Excedente', capacity: 5530, historical: historicalState['Transbordo Excedente'] || 0, current: 0, used: (historicalState['Transbordo Excedente'] || 0) + (reservations['Transbordo Excedente'] || 0), reserved: reservations['Transbordo Excedente'] || 0, isSpecial: true, isTemporary: true }
         ];
         
         const currentAllocation = {};
@@ -521,7 +554,7 @@ export default function App() {
               for (const mod of env.modules) {
                 let modGondola = genericGondolas.find(g => g.used + mod.space <= g.capacity);
                  if (!modGondola) {
-                   modGondola = tempGondolas.find(g => g.id === 'Temporária');
+                   modGondola = tempGondolas.find(g => g.id === 'Transbordo Excedente');
                  }
                 modGondola.used += mod.space;
                 modGondola.current += mod.space;
@@ -544,7 +577,7 @@ export default function App() {
         setLoading(false);
       }
     });
-  }, []);
+  }, [suspendedProjects, historicalState]);
 
   // --- CAPTURA GLOBAL DA PISTOLA USB ---
   useEffect(() => {
@@ -906,12 +939,169 @@ export default function App() {
     setHistoricalState(newHistory);
     localStorage.setItem('gondolaHistory', JSON.stringify(newHistory));
     
-    setGondolas(prev => prev.map(g => {
-      if (g.id === gondolaId) {
-        return { ...g, historical: newHistory[gondolaId], used: newHistory[gondolaId] + g.current };
+  };
+
+  const handleSuspendCurrentProject = () => {
+    if (!currentClient || currentClient === 'Cliente Desconhecido' || projectPieces.length === 0) {
+      alert("Não há nenhum projeto ativo para suspender.");
+      return;
+    }
+    
+    requestPassword("1234", "Senha do Operador.", () => {
+      const newProj = {
+        clientName: currentClient,
+        pieces: projectPieces,
+        environments: environments,
+        scannedPieces: scannedPieces,
+        rejectedPieces: rejectedPieces,
+        allocation: allocation,
+        extraSpaces: gondolaExtraSpaces,
+        timestamp: Date.now()
+      };
+      
+      const filtered = suspendedProjects.filter(p => p.clientName !== currentClient);
+      const newList = [...filtered, newProj];
+      
+      setSuspendedProjects(newList);
+      localStorage.setItem('suspendedProjects', JSON.stringify(newList));
+      
+      // Limpar sessão ativa
+      const oldClient = currentClient;
+      setCurrentClient('Cliente Desconhecido');
+      setProjectPieces([]);
+      setEnvironments({});
+      setScannedPieces([]);
+      setRejectedPieces([]);
+      setAllocation({});
+      setGondolaExtraSpaces({});
+      setLastScanned(null);
+      
+      alert(`Projeto de "${oldClient}" suspenso com sucesso e espaço reservado nas gôndolas!`);
+    });
+  };
+
+  const handleCompleteCurrentProject = async () => {
+    if (!currentClient || currentClient === 'Cliente Desconhecido' || projectPieces.length === 0) {
+      alert("Não há nenhum projeto ativo para concluir.");
+      return;
+    }
+    
+    requestPassword("1234", "Senha do Operador.", async () => {
+      setIsUpdatingReport(true);
+      
+      // Abrir aba de carregamento imediatamente
+      const newWindow = window.open('about:blank', '_blank');
+      if (newWindow) {
+        newWindow.document.write(`
+          <html>
+            <head>
+              <title>Concluindo Projeto...</title>
+              <style>
+                body { background: #121214; color: #e1e1e6; font-family: system-ui, -apple-system, sans-serif; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+                .spinner { border: 4px solid rgba(255,255,255,0.1); width: 50px; height: 50px; border-radius: 50%; border-left-color: #2563eb; animation: spin 1s linear infinite; margin-bottom: 20px; }
+                @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+                h2 { font-weight: 500; font-size: 1.25rem; margin: 0; }
+                p { color: #8f9099; font-size: 0.9rem; margin-top: 8px; }
+              </style>
+            </head>
+            <body>
+              <div class="spinner"></div>
+              <h2>Salvando estoque e finalizando no Google Sheets...</h2>
+              <p>Por favor, aguarde.</p>
+            </body>
+          </html>
+        `);
       }
-      return g;
-    }));
+
+      try {
+        const reportData = buildReportData();
+        const payload = {
+          clientName: currentClient,
+          modules: reportData.modules,
+          noBarcodes: reportData.noBarcodes,
+          defects: reportData.defects,
+          stats: reportData.stats,
+          gondolasExport: reportData.gondolasExport
+        };
+        
+        const res = await fetch(APPS_SCRIPT_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'text/plain;charset=utf-8'
+          },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        
+        if (data.success) {
+          if (newWindow) {
+            newWindow.location.href = data.sheetUrl;
+          } else {
+            window.open(data.sheetUrl, '_blank');
+          }
+          
+          // Remover da lista de suspensos (caso estivesse lá)
+          const newList = suspendedProjects.filter(p => p.clientName !== currentClient);
+          setSuspendedProjects(newList);
+          localStorage.setItem('suspendedProjects', JSON.stringify(newList));
+
+          // Limpar sessão ativa
+          const oldClient = currentClient;
+          setCurrentClient('Cliente Desconhecido');
+          setProjectPieces([]);
+          setEnvironments({});
+          setScannedPieces([]);
+          setRejectedPieces([]);
+          setAllocation({});
+          setGondolaExtraSpaces({});
+          setLastScanned(null);
+          
+          alert(`Projeto de "${oldClient}" concluído com sucesso e planilha gerencial atualizada!`);
+        } else {
+          if (newWindow) newWindow.close();
+          alert("Erro no robô do Google: " + data.error);
+        }
+      } catch (e) {
+        if (newWindow) newWindow.close();
+        alert("Erro de conexão ao enviar relatório: " + e.message);
+      }
+      setIsUpdatingReport(false);
+    });
+  };
+
+  const handleResumeProject = (name) => {
+    if (currentClient && currentClient !== 'Cliente Desconhecido' && projectPieces.length > 0) {
+      alert("Por favor, suspenda ou conclua o projeto ativo atual antes de retomar outro!");
+      return;
+    }
+    
+    const found = suspendedProjects.find(p => p.clientName === name);
+    if (!found) return;
+    
+    // Restaurar progresso exato
+    setCurrentClient(found.clientName);
+    setProjectPieces(found.pieces);
+    setEnvironments(found.environments);
+    setScannedPieces(found.scannedPieces);
+    setRejectedPieces(found.rejectedPieces);
+    setAllocation(found.allocation);
+    setGondolaExtraSpaces(found.extraSpaces || {});
+    
+    // Remover da lista de suspensos
+    const newList = suspendedProjects.filter(p => p.clientName !== name);
+    setSuspendedProjects(newList);
+    localStorage.setItem('suspendedProjects', JSON.stringify(newList));
+    
+    alert(`Projeto de "${name}" retomado de onde você parou!`);
+  };
+
+  const handleDiscardSuspendedProject = (name) => {
+    requestPassword("1234", "Senha do Operador.", () => {
+      const newList = suspendedProjects.filter(p => p.clientName !== name);
+      setSuspendedProjects(newList);
+      localStorage.setItem('suspendedProjects', JSON.stringify(newList));
+      alert(`Projeto de "${name}" descartado e espaço de gôndola liberado.`);
+    });
   };
 
   const pendingPieces = projectPieces.filter(p => !scannedPieces.includes(p.displayId));
@@ -974,6 +1164,16 @@ export default function App() {
             🔁 Resetar Bipagem
           </button>
 
+          <button onClick={handleSuspendCurrentProject} style={{ 
+              display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#e67e22', color: 'white', padding: '0.5rem 1.25rem', borderRadius: '9999px', border: 'none', cursor: 'pointer', fontWeight: 'bold' 
+            }}>
+            ⏸️ Suspender Projeto
+          </button>
+          <button onClick={handleCompleteCurrentProject} style={{ 
+              display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#27ae60', color: 'white', padding: '0.5rem 1.25rem', borderRadius: '9999px', border: 'none', cursor: 'pointer', fontWeight: 'bold' 
+            }}>
+            ✅ Concluir Projeto
+          </button>
           <button onClick={handleAtualizarPlanilha} disabled={isUpdatingReport} style={{ 
               display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'var(--primary)', color: 'white', padding: '0.5rem 1.5rem', borderRadius: '9999px', border: 'none', cursor: isUpdatingReport ? 'not-allowed' : 'pointer', fontWeight: 'bold', opacity: isUpdatingReport ? 0.7 : 1 
             }}>
@@ -1171,59 +1371,77 @@ export default function App() {
         </div>
 
         {/* COLUNA 3: GÔNDOLAS */}
-        <div className="dashboard-card">
-          <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.5rem', color: 'var(--primary)' }}>
+        <div className="dashboard-card" style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+          <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', color: 'var(--primary)' }}>
             <Box size={24} />
             Alocação de Gôndolas
           </h2>
 
-          {gondolas.some(g => g.id === 'Temporária' && (g.used + (gondolaExtraSpaces[g.id] || 0)) > 0) && (
+          {/* Legenda de Cores */}
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1rem', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+              <span style={{ width: '8px', height: '8px', background: 'var(--text-muted)', borderRadius: '2px' }} /> Histórico
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+              <span style={{ width: '8px', height: '8px', background: 'repeating-linear-gradient(45deg, #2980b9, #2980b9 2px, #34495e 2px, #34495e 4px)', borderRadius: '2px' }} /> Reservado (Pausado)
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+              <span style={{ width: '8px', height: '8px', background: 'var(--primary)', borderRadius: '2px' }} /> Atual
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+              <span style={{ width: '8px', height: '8px', background: '#9b59b6', borderRadius: '2px' }} /> Extra (+)
+            </div>
+          </div>
+
+          {gondolas.some(g => g.id === 'Transbordo Excedente' && (g.used + (gondolaExtraSpaces[g.id] || 0)) > 0) && (
             <div style={{
               background: 'rgba(230, 126, 34, 0.1)',
               border: '1px solid #e67e22',
               color: '#e67e22',
-              padding: '1rem',
+              padding: '0.75rem 1rem',
               borderRadius: '0.75rem',
               marginBottom: '1rem',
-              fontSize: '0.85rem',
+              fontSize: '0.8rem',
               display: 'flex',
               alignItems: 'flex-start',
               gap: '0.5rem',
               lineHeight: '1.4'
             }}>
-              <AlertCircle size={20} style={{ flexShrink: 0, marginTop: '2px' }} />
+              <AlertCircle size={18} style={{ flexShrink: 0, marginTop: '2px' }} />
               <div>
                 <strong>Atenção: Transbordo de Produção!</strong><br />
-                O projeto atual excedeu a capacidade das gôndolas padrão. Uma <strong>Gôndola Temporária</strong> foi gerada automaticamente para comportar o excesso.
+                O projeto atual excedeu a capacidade das gôndolas padrão. Uma <strong>Gôndola de Transbordo</strong> foi gerada para o excesso.
               </div>
             </div>
           )}
           
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem', paddingRight: '0.25rem', marginBottom: '0.5rem' }}>
             {gondolas.map(g => {
               const extraSpace = gondolaExtraSpaces[g.id] || 0;
               const totalUsed = g.used + extraSpace;
               
-              if (g.id === 'Temporária' && totalUsed === 0 && g.current === 0 && g.historical === 0) {
+              if (g.id === 'Transbordo Excedente' && totalUsed === 0 && g.current === 0 && g.historical === 0) {
                 return null;
               }
               
+              const resSpace = g.reserved || 0;
               const percHist = Math.min(100, (g.historical / g.capacity) * 100);
-              const percCurr = Math.min(100 - percHist, (g.current / g.capacity) * 100);
-              const percExtra = Math.min(100 - percHist - percCurr, (extraSpace / g.capacity) * 100);
+              const percReserved = Math.min(100 - percHist, (resSpace / g.capacity) * 100);
+              const percCurr = Math.min(100 - percHist - percReserved, (g.current / g.capacity) * 100);
+              const percExtra = Math.min(100 - percHist - percReserved - percCurr, (extraSpace / g.capacity) * 100);
               const isOverfull = totalUsed > g.capacity;
               
               return (
-                <div key={g.id} style={{ background: 'var(--gondola-bg)', padding: '1.25rem', borderRadius: '1rem', border: '1px solid var(--gondola-border)', borderTop: isOverfull ? '4px solid var(--error)' : (g.id === 'Temporária' ? '4px solid #e67e22' : '4px solid var(--primary)'), boxShadow: 'var(--shadow-soft)' }}>
+                <div key={g.id} style={{ background: 'var(--gondola-bg)', padding: '1.25rem', borderRadius: '1rem', border: '1px solid var(--gondola-border)', borderTop: isOverfull ? '4px solid var(--error)' : (g.id === 'Transbordo Excedente' ? '4px solid #e67e22' : '4px solid var(--primary)'), boxShadow: 'var(--shadow-soft)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', fontWeight: 'bold' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <span>{g.isSpecial && g.id !== 'Temporária' ? '' : (g.id === 'Temporária' ? '' : 'Gôndola ')}{g.id}</span>
-                      {g.id === 'Temporária' && (
+                      <span>{g.isSpecial && g.id !== 'Transbordo Excedente' ? '' : (g.id === 'Transbordo Excedente' ? '' : 'Gôndola ')}{g.id}</span>
+                      {g.id === 'Transbordo Excedente' && (
                         <span style={{ fontSize: '0.75rem', background: '#e67e22', color: 'white', padding: '0.2rem 0.5rem', borderRadius: '4px', fontWeight: 'bold' }}>
-                          Transbordo (Excesso)
+                          Transbordo Excedente
                         </span>
                       )}
-                      {isOverfull && g.isSpecial && g.id !== 'Temporária' && (
+                      {isOverfull && g.isSpecial && g.id !== 'Transbordo Excedente' && (
                         <span style={{ fontSize: '0.7rem', background: 'var(--error)', color: 'white', padding: '0.2rem 0.5rem', borderRadius: '4px' }}>
                           Necessário empilhar ambientes
                         </span>
@@ -1235,8 +1453,9 @@ export default function App() {
                   </div>
                   <div style={{ width: '100%', height: '12px', background: 'var(--gondola-border)', borderRadius: '9999px', overflow: 'hidden', display: 'flex' }}>
                     <div style={{ width: `${percHist}%`, height: '100%', background: 'var(--text-muted)', transition: 'width 0.3s ease' }} title="Espaço Histórico" />
+                    <div style={{ width: `${percReserved}%`, height: '100%', background: 'repeating-linear-gradient(45deg, #2980b9, #2980b9 5px, #34495e 5px, #34495e 10px)', transition: 'width 0.3s ease' }} title="Espaço Reservado (Pausado)" />
                     <div style={{ width: `${percCurr}%`, height: '100%', background: isOverfull ? 'var(--error)' : 'var(--primary)', transition: 'width 0.3s ease' }} title="Projeto Atual" />
-                    <div style={{ width: `${percExtra}%`, height: '100%', background: '#9b59b6', transition: 'width 0.3s ease' }} title="Espaço Adicional (0.5m)" />
+                    <div style={{ width: `${percExtra}%`, height: '100%', background: '#9b59b6', transition: 'width 0.3s ease' }} title="Espaço Adicional (+)" />
                   </div>
                   <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.75rem' }}>
                     <button onClick={() => {
@@ -1259,6 +1478,41 @@ export default function App() {
               );
             })}
           </div>
+
+          {/* PAINEL DE PROJETOS SUSPENSOS */}
+          {suspendedProjects.length > 0 && (
+            <div style={{ borderTop: '1px solid var(--gondola-border)', paddingTop: '0.75rem', marginTop: '0.5rem' }}>
+              <h3 style={{ fontSize: '0.9rem', color: 'var(--text-main)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                📌 Projetos Pausados ({suspendedProjects.length})
+              </h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', maxH: '20vh', overflowY: 'auto' }}>
+                {suspendedProjects.map((p, idx) => {
+                  const doneCount = p.scannedPieces.length;
+                  const totalCount = p.pieces.length;
+                  return (
+                    <div key={`susp-${idx}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem 0.75rem', background: 'var(--gondola-bg)', border: '1px solid var(--gondola-border)', borderRadius: '0.5rem', fontSize: '0.75rem' }}>
+                      <div style={{ flex: 1, minWidth: 0, paddingRight: '0.5rem' }}>
+                        <div style={{ fontWeight: 'bold', color: 'var(--text-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={p.clientName}>
+                          {p.clientName}
+                        </div>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>
+                          Progresso: {doneCount}/{totalCount} peças
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.25rem' }}>
+                        <button onClick={() => handleResumeProject(p.clientName)} style={{ background: 'var(--primary)', color: 'white', border: 'none', padding: '0.25rem 0.5rem', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.7rem' }}>
+                          ▶️ Retomar
+                        </button>
+                        <button onClick={() => handleDiscardSuspendedProject(p.clientName)} style={{ background: 'rgba(248,49,70,0.15)', color: 'var(--error)', border: '1px solid var(--error)', padding: '0.25rem 0.5rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem' }}>
+                          🗑️
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
       {/* MODAL DE SENHA CUSTOMIZADO E MASCARADO */}
