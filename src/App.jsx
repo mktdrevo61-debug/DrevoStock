@@ -1144,48 +1144,57 @@ export default function App() {
           <Box size={24} />
           Painel de Separação Inteligente
         </h1>
-        <div style={{ display: 'flex', gap: '1rem' }}>
-          <button onClick={() => {
-              requestPassword("753951", "Senha do Administrador de Engenharia", () => {
-                setShowZerarModal(true);
-              });
-            }} style={{
-              background: 'var(--error)', color: 'white', padding: '0.5rem 1rem', borderRadius: '9999px', border: 'none', cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.4rem'
-            }}>
-            <AlertTriangle size={16} /> Zerar Fábrica
-          </button>
-          <button onClick={() => {
-              requestPassword("753951", "Senha do Administrador de Engenharia", () => {
-                setScannedPieces([]); setLastScanned(null); setRejectedPieces([]);
-              });
-            }} style={{
-              background: 'var(--text-muted)', color: 'white', padding: '0.5rem 1rem', borderRadius: '9999px', border: 'none', cursor: 'pointer', fontWeight: 'bold'
-            }}>
-            🔁 Resetar Bipagem
-          </button>
+        <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
+          
+          {/* PAINEL DO SUPERVISOR / ENGENHARIA (Ações de Controle e Admin) */}
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'rgba(255, 255, 255, 0.03)', padding: '0.25rem 0.5rem', borderRadius: '0.75rem', border: '1px dashed var(--gondola-border)' }}>
+            <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 'bold', padding: '0 0.25rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>ENG</span>
+            <button onClick={() => {
+                requestPassword("753951", "Senha do Administrador de Engenharia", handleSavePlanilhas);
+              }} style={{ 
+                display: 'flex', alignItems: 'center', gap: '0.4rem', background: '#9b59b6', color: 'white', padding: '0.4rem 0.8rem', borderRadius: '0.5rem', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem' 
+              }}>
+              💾 Salvar Estoque
+            </button>
+            <button onClick={() => {
+                requestPassword("753951", "Senha do Administrador de Engenharia", () => {
+                  setScannedPieces([]); setLastScanned(null); setRejectedPieces([]);
+                });
+              }} style={{
+                background: 'rgba(255, 255, 255, 0.08)', color: 'var(--text-main)', padding: '0.4rem 0.8rem', borderRadius: '0.5rem', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem'
+              }}>
+              🔁 Resetar Bipagem
+            </button>
+            <button onClick={() => {
+                requestPassword("753951", "Senha do Administrador de Engenharia", () => {
+                  setShowZerarModal(true);
+                });
+              }} style={{
+                background: 'var(--error)', color: 'white', padding: '0.4rem 0.8rem', borderRadius: '0.5rem', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.3rem'
+              }}>
+              <AlertTriangle size={12} /> Zerar Fábrica
+            </button>
+          </div>
 
-          <button onClick={handleSuspendCurrentProject} style={{ 
-              display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#e67e22', color: 'white', padding: '0.5rem 1.25rem', borderRadius: '9999px', border: 'none', cursor: 'pointer', fontWeight: 'bold' 
-            }}>
-            ⏸️ Suspender Projeto
-          </button>
-          <button onClick={handleCompleteCurrentProject} style={{ 
-              display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#27ae60', color: 'white', padding: '0.5rem 1.25rem', borderRadius: '9999px', border: 'none', cursor: 'pointer', fontWeight: 'bold' 
-            }}>
-            ✅ Concluir Projeto
-          </button>
-          <button onClick={handleAtualizarPlanilha} disabled={isUpdatingReport} style={{ 
-              display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'var(--primary)', color: 'white', padding: '0.5rem 1.5rem', borderRadius: '9999px', border: 'none', cursor: isUpdatingReport ? 'not-allowed' : 'pointer', fontWeight: 'bold', opacity: isUpdatingReport ? 0.7 : 1 
-            }}>
-            {isUpdatingReport ? 'Carregando...' : '📊 Atualizar Planilha'}
-          </button>
-          <button onClick={() => {
-              requestPassword("753951", "Senha do Administrador de Engenharia", handleSavePlanilhas);
-            }} style={{ 
-              display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'var(--success)', color: 'white', padding: '0.5rem 1.5rem', borderRadius: '9999px', border: 'none', cursor: 'pointer', fontWeight: 'bold' 
-            }}>
-            💾 Salvar Estoque
-          </button>
+          {/* FLUXO DE TRABALHO DO OPERADOR (Ações Diárias Cronológicas) */}
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <button onClick={handleAtualizarPlanilha} disabled={isUpdatingReport} style={{ 
+                display: 'flex', alignItems: 'center', gap: '0.4rem', background: 'var(--primary)', color: 'white', padding: '0.5rem 1.25rem', borderRadius: '9999px', border: 'none', cursor: isUpdatingReport ? 'not-allowed' : 'pointer', fontWeight: 'bold', opacity: isUpdatingReport ? 0.7 : 1, fontSize: '0.85rem' 
+              }}>
+              {isUpdatingReport ? 'Carregando...' : '📊 Atualizar Planilha'}
+            </button>
+            <button onClick={handleSuspendCurrentProject} style={{ 
+                display: 'flex', alignItems: 'center', gap: '0.4rem', background: '#e67e22', color: 'white', padding: '0.5rem 1.25rem', borderRadius: '9999px', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem' 
+              }}>
+              ⏸️ Suspender Projeto
+            </button>
+            <button onClick={handleCompleteCurrentProject} style={{ 
+                display: 'flex', alignItems: 'center', gap: '0.4rem', background: '#27ae60', color: 'white', padding: '0.5rem 1.5rem', borderRadius: '9999px', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.9rem', boxShadow: '0 0 12px rgba(39, 174, 96, 0.4)' 
+              }}>
+              ✅ Concluir Projeto
+            </button>
+          </div>
+          
         </div>
       </header>
 
