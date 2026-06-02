@@ -1144,7 +1144,7 @@ export default function App() {
           <Box size={24} />
           Painel de Separação Inteligente
         </h1>
-        <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '2.5rem', alignItems: 'center' }}>
           
           {/* PAINEL DO SUPERVISOR / ENGENHARIA (Ações de Controle e Admin) */}
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'rgba(255, 255, 255, 0.03)', padding: '0.25rem 0.5rem', borderRadius: '0.75rem', border: '1px dashed var(--gondola-border)' }}>
@@ -1175,6 +1175,9 @@ export default function App() {
               <AlertTriangle size={12} /> Zerar Fábrica
             </button>
           </div>
+
+          {/* DIVISOR VERTICAL NITÍDO */}
+          <div style={{ width: '2px', height: '24px', background: 'var(--gondola-border)', opacity: 0.6 }} />
 
           {/* FLUXO DE TRABALHO DO OPERADOR (Ações Diárias Cronológicas) */}
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
