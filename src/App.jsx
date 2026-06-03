@@ -484,9 +484,25 @@ export default function App() {
           }),
           { id: 'Expedição', capacity: 7760, historical: historicalState['Expedição'] || 0, current: 0, used: (historicalState['Expedição'] || 0) + (reservations['Expedição'] || 0), reserved: reservations['Expedição'] || 0, isSpecial: true },
           { id: 'Peças Grandes', capacity: 5200, historical: historicalState['Peças Grandes'] || 0, current: 0, used: (historicalState['Peças Grandes'] || 0) + (reservations['Peças Grandes'] || 0), reserved: reservations['Peças Grandes'] || 0, isSpecial: true },
-          { id: 'Peças Gigantes', capacity: 1840, historical: historicalState['Peças Gigantes'] || 0, current: 0, used: (historicalState['Peças Gigantes'] || 0) + (reservations['Peças Gigantes'] || 0), reserved: reservations['Peças Gigantes'] || 0, isSpecial: true },
-          { id: 'Transbordo Excedente', capacity: 5530, historical: historicalState['Transbordo Excedente'] || 0, current: 0, used: (historicalState['Transbordo Excedente'] || 0) + (reservations['Transbordo Excedente'] || 0), reserved: reservations['Transbordo Excedente'] || 0, isSpecial: true, isTemporary: true }
+          { id: 'Peças Gigantes', capacity: 1840, historical: historicalState['Peças Gigantes'] || 0, current: 0, used: (historicalState['Peças Gigantes'] || 0) + (reservations['Peças Gigantes'] || 0), reserved: reservations['Peças Gigantes'] || 0, isSpecial: true }
         ];
+
+        // Carregar gôndolas de transbordo excedente já salvas no histórico
+        Object.keys(historicalState).forEach(key => {
+          if (key.startsWith('Transbordo Excedente')) {
+            const resSpace = reservations[key] || 0;
+            tempGondolas.push({
+              id: key,
+              capacity: 5530,
+              historical: historicalState[key] || 0,
+              current: 0,
+              used: (historicalState[key] || 0) + resSpace,
+              reserved: resSpace,
+              isSpecial: true,
+              isTemporary: true
+            });
+          }
+        });
         
         const currentAllocation = {};
 
@@ -554,7 +570,24 @@ export default function App() {
               for (const mod of env.modules) {
                 let modGondola = genericGondolas.find(g => g.used + mod.space <= g.capacity);
                  if (!modGondola) {
-                   modGondola = tempGondolas.find(g => g.id === 'Transbordo Excedente');
+                   let transbordoGondolas = tempGondolas.filter(g => g.id.startsWith('Transbordo Excedente'));
+                   let foundTransbordo = transbordoGondolas.find(g => g.used + mod.space <= g.capacity);
+                   if (!foundTransbordo) {
+                     const nextNum = transbordoGondolas.length + 1;
+                     const newId = `Transbordo Excedente ${nextNum}`;
+                     foundTransbordo = {
+                       id: newId,
+                       capacity: 5530,
+                       historical: historicalState[newId] || 0,
+                       current: 0,
+                       used: (historicalState[newId] || 0) + (reservations[newId] || 0),
+                       reserved: reservations[newId] || 0,
+                       isSpecial: true,
+                       isTemporary: true
+                     };
+                     tempGondolas.push(foundTransbordo);
+                   }
+                   modGondola = foundTransbordo;
                  }
                 modGondola.used += mod.space;
                 modGondola.current += mod.space;
@@ -888,23 +921,13 @@ export default function App() {
     const newHistory = { ...historicalState };
     gondolas.forEach(g => {
       const extra = gondolaExtraSpaces[g.id] || 0;
-      newHistory[g.id] = g.used + extra; 
+      newHistory[g.id] = g.historical + extra; 
     });
     setHistoricalState(newHistory);
     localStorage.setItem('gondolaHistory', JSON.stringify(newHistory));
     
-    // Atualiza o estado local para incorporar o espaço extra no histórico (cor cinza)
-    setGondolas(prev => prev.map(g => {
-      const extra = gondolaExtraSpaces[g.id] || 0;
-      return {
-        ...g,
-        historical: g.historical + extra,
-        used: g.used + extra
-      };
-    }));
-    
     setGondolaExtraSpaces({});
-    alert("Planilhas salvas com sucesso! O estado atual das gôndolas foi gravado na memória como histórico.");
+    alert("Estoque salvo com sucesso! O espaço adicional foi consolidado no histórico.");
   };
 
   const handleZerarFabrica = () => {
@@ -1039,6 +1062,15 @@ export default function App() {
           } else {
             window.open(data.sheetUrl, '_blank');
           }
+          
+          // Salvar o estoque concluído no histórico
+          const newHistory = { ...historicalState };
+          gondolas.forEach(g => {
+            const extra = gondolaExtraSpaces[g.id] || 0;
+            newHistory[g.id] = (historicalState[g.id] || 0) + g.current + extra;
+          });
+          setHistoricalState(newHistory);
+          localStorage.setItem('gondolaHistory', JSON.stringify(newHistory));
           
           // Remover da lista de suspensos (caso estivesse lá)
           const newList = suspendedProjects.filter(p => p.clientName !== currentClient);
@@ -1405,7 +1437,7 @@ export default function App() {
             </div>
           </div>
 
-          {gondolas.some(g => g.id === 'Transbordo Excedente' && (g.used + (gondolaExtraSpaces[g.id] || 0)) > 0) && (
+          {gondolas.some(g => g.id.startsWith('Transbordo Excedente') && (g.used + (gondolaExtraSpaces[g.id] || 0)) > 0) && (
             <div style={{
               background: 'rgba(230, 126, 34, 0.1)',
               border: '1px solid #e67e22',
@@ -1422,7 +1454,7 @@ export default function App() {
               <AlertCircle size={18} style={{ flexShrink: 0, marginTop: '2px' }} />
               <div>
                 <strong>Atenção: Transbordo de Produção!</strong><br />
-                O projeto atual excedeu a capacidade das gôndolas padrão. Uma <strong>Gôndola de Transbordo</strong> foi gerada para o excesso.
+                O projeto atual excedeu a capacidade das gôndolas padrão. Gôndolas de <strong>Transbordo Excedente</strong> foram geradas.
               </div>
             </div>
           )}
@@ -1432,7 +1464,7 @@ export default function App() {
               const extraSpace = gondolaExtraSpaces[g.id] || 0;
               const totalUsed = g.used + extraSpace;
               
-              if (g.id === 'Transbordo Excedente' && totalUsed === 0 && g.current === 0 && g.historical === 0) {
+              if (g.id.startsWith('Transbordo Excedente') && totalUsed === 0 && g.current === 0 && g.historical === 0) {
                 return null;
               }
               
@@ -1444,16 +1476,16 @@ export default function App() {
               const isOverfull = totalUsed > g.capacity;
               
               return (
-                <div key={g.id} style={{ background: 'var(--gondola-bg)', padding: '1.25rem', borderRadius: '1rem', border: '1px solid var(--gondola-border)', borderTop: isOverfull ? '4px solid var(--error)' : (g.id === 'Transbordo Excedente' ? '4px solid #e67e22' : '4px solid var(--primary)'), boxShadow: 'var(--shadow-soft)' }}>
+                <div key={g.id} style={{ background: 'var(--gondola-bg)', padding: '1.25rem', borderRadius: '1rem', border: '1px solid var(--gondola-border)', borderTop: isOverfull ? '4px solid var(--error)' : (g.id.startsWith('Transbordo Excedente') ? '4px solid #e67e22' : '4px solid var(--primary)'), boxShadow: 'var(--shadow-soft)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', fontWeight: 'bold' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <span>{g.isSpecial && g.id !== 'Transbordo Excedente' ? '' : (g.id === 'Transbordo Excedente' ? '' : 'Gôndola ')}{g.id}</span>
-                      {g.id === 'Transbordo Excedente' && (
+                      <span>{g.isSpecial && !g.id.startsWith('Transbordo Excedente') ? '' : (g.id.startsWith('Transbordo Excedente') ? '' : 'Gôndola ')}{g.id}</span>
+                      {g.id.startsWith('Transbordo Excedente') && (
                         <span style={{ fontSize: '0.75rem', background: '#e67e22', color: 'white', padding: '0.2rem 0.5rem', borderRadius: '4px', fontWeight: 'bold' }}>
                           Transbordo Excedente
                         </span>
                       )}
-                      {isOverfull && g.isSpecial && g.id !== 'Transbordo Excedente' && (
+                      {isOverfull && g.isSpecial && !g.id.startsWith('Transbordo Excedente') && (
                         <span style={{ fontSize: '0.7rem', background: 'var(--error)', color: 'white', padding: '0.2rem 0.5rem', borderRadius: '4px' }}>
                           Necessário empilhar ambientes
                         </span>
