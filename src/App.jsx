@@ -141,8 +141,12 @@ export default function App() {
   }, [rejectedPieces, currentClient]);
 
   // 1. Carregar Planilha Real e Rodar Motor de Inteligência
-  useEffect(() => {
-    Papa.parse(GOOGLE_SHEET_CSV_URL, {
+  const carregarDadosProjeto = () => {
+    setLoading(true);
+    setErrorMsg('');
+    // Use cache-busting to bypass aggressive browser caching of Google Sheet exports
+    const cacheBusterUrl = `${GOOGLE_SHEET_CSV_URL}&t=${Date.now()}`;
+    Papa.parse(cacheBusterUrl, {
       download: true,
       header: true,
       skipEmptyLines: true,
@@ -469,8 +473,6 @@ export default function App() {
           envHierarchy['PEÇAS GIGANTES'] = gigantesStacks;
         }
 
-
-
         setEnvironments(envHierarchy);
 
         // PASSAGEM 5: Alocação nas Gôndolas
@@ -610,6 +612,10 @@ export default function App() {
         setLoading(false);
       }
     });
+  };
+
+  useEffect(() => {
+    carregarDadosProjeto();
   }, [suspendedProjects, historicalState]);
 
   // --- CAPTURA GLOBAL DA PISTOLA USB ---
@@ -1175,6 +1181,32 @@ export default function App() {
         <h1 style={{ margin: 0, fontSize: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <Box size={24} />
           Painel de Separação Inteligente
+          <button 
+            onClick={carregarDadosProjeto} 
+            disabled={loading} 
+            title="Recarregar dados da planilha do Google Sheets"
+            style={{
+              marginLeft: '1.25rem',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              background: '#34495e',
+              color: 'white',
+              padding: '0.4rem 0.8rem',
+              borderRadius: '0.5rem',
+              border: 'none',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              fontWeight: 'bold',
+              fontSize: '0.75rem',
+              transition: 'all 0.2s ease',
+              opacity: loading ? 0.7 : 1,
+              boxShadow: '0 2px 4px rgba(0,0,0,0.15)'
+            }}
+            onMouseOver={(e) => { if (!loading) e.currentTarget.style.background = '#2c3e50'; }}
+            onMouseOut={(e) => { if (!loading) e.currentTarget.style.background = '#34495e'; }}
+          >
+            {loading ? <Loader2 size={12} style={{ animation: 'spin 2s linear infinite' }} /> : '🔄'} Recarregar Projeto
+          </button>
         </h1>
         <div style={{ display: 'flex', gap: '2.5rem', alignItems: 'center' }}>
           
@@ -1216,7 +1248,7 @@ export default function App() {
             <button onClick={handleAtualizarPlanilha} disabled={isUpdatingReport} style={{ 
                 display: 'flex', alignItems: 'center', gap: '0.4rem', background: 'var(--primary)', color: 'white', padding: '0.5rem 1.25rem', borderRadius: '9999px', border: 'none', cursor: isUpdatingReport ? 'not-allowed' : 'pointer', fontWeight: 'bold', opacity: isUpdatingReport ? 0.7 : 1, fontSize: '0.85rem' 
               }}>
-              {isUpdatingReport ? 'Carregando...' : '📊 Atualizar Planilha'}
+              {isUpdatingReport ? 'Carregando...' : '📊 Enviar Relatório'}
             </button>
             <button onClick={handleSuspendCurrentProject} style={{ 
                 display: 'flex', alignItems: 'center', gap: '0.4rem', background: '#e67e22', color: 'white', padding: '0.5rem 1.25rem', borderRadius: '9999px', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem' 
