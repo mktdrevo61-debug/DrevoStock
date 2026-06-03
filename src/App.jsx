@@ -542,6 +542,7 @@ export default function App() {
               gondola.used += mod.space;
               gondola.current += mod.space;
               mod.pieces.forEach(p => { currentAllocation[p.displayId] = gondola.id; });
+              currentAllocation[`${mod.envName}_${mod.modId}`] = gondola.id;
               mod.allocated = true; // Marca como resolvido
             }
           });
@@ -566,6 +567,7 @@ export default function App() {
                 targetGondola.used += mod.space;
                 targetGondola.current += mod.space;
                 mod.pieces.forEach(p => { currentAllocation[p.displayId] = targetGondola.id; });
+                currentAllocation[`${mod.envName}_${mod.modId}`] = targetGondola.id;
               }
             } else {
               // Quebrar módulos
@@ -594,14 +596,14 @@ export default function App() {
                 modGondola.used += mod.space;
                 modGondola.current += mod.space;
                 mod.pieces.forEach(p => { currentAllocation[p.displayId] = modGondola.id; });
+                currentAllocation[`${mod.envName}_${mod.modId}`] = modGondola.id;
               }
             }
           }
         }
 
         setAllocation(currentAllocation);
-        setGondolas(tempGondolas);
-
+        // setGondolas is now handled by the useEffect below
         setLoading(false);
         
         if (inputRef.current) inputRef.current.focus();
@@ -616,7 +618,74 @@ export default function App() {
 
   useEffect(() => {
     carregarDadosProjeto();
-  }, [suspendedProjects, historicalState]);
+  }, []); // Remove dependencies so it only loads on mount or explicit manual button click
+
+  // --- RECALCULAR GONDOLAS VISUALMENTE (Desacoplado do CSV) ---
+  useEffect(() => {
+    const reservations = getSuspendedReservations(suspendedProjects);
+    let tempG = [
+      ...Array.from({length: 7}, (_, i) => {
+        const id = (i + 1).toString();
+        const resSpace = reservations[id] || 0;
+        return { id, capacity: 5530, historical: historicalState[id] || 0, current: 0, used: (historicalState[id] || 0) + resSpace + (gondolaExtraSpaces[id] || 0), reserved: resSpace, isSpecial: false };
+      }),
+      { id: 'Expedição', capacity: 7760, historical: historicalState['Expedição'] || 0, current: 0, used: (historicalState['Expedição'] || 0) + (reservations['Expedição'] || 0) + (gondolaExtraSpaces['Expedição'] || 0), reserved: reservations['Expedição'] || 0, isSpecial: true },
+      { id: 'Peças Grandes', capacity: 5200, historical: historicalState['Peças Grandes'] || 0, current: 0, used: (historicalState['Peças Grandes'] || 0) + (reservations['Peças Grandes'] || 0) + (gondolaExtraSpaces['Peças Grandes'] || 0), reserved: reservations['Peças Grandes'] || 0, isSpecial: true },
+      { id: 'Peças Gigantes', capacity: 1840, historical: historicalState['Peças Gigantes'] || 0, current: 0, used: (historicalState['Peças Gigantes'] || 0) + (reservations['Peças Gigantes'] || 0) + (gondolaExtraSpaces['Peças Gigantes'] || 0), reserved: reservations['Peças Gigantes'] || 0, isSpecial: true }
+    ];
+
+    Object.keys(historicalState).forEach(key => {
+      if (key.startsWith('Transbordo Excedente') && !tempG.some(g => g.id === key)) {
+        const resSpace = reservations[key] || 0;
+        tempG.push({
+          id: key,
+          capacity: 5530,
+          historical: historicalState[key] || 0,
+          current: 0,
+          used: (historicalState[key] || 0) + resSpace + (gondolaExtraSpaces[key] || 0),
+          reserved: resSpace,
+          isSpecial: true,
+          isTemporary: true
+        });
+      }
+    });
+
+    for (const envName in environments) {
+      for (const modId in environments[envName]) {
+        const mod = environments[envName][modId];
+        if (!mod.pieces || mod.pieces.length === 0) continue;
+        const firstPiece = mod.pieces[0];
+        const gondolaId = allocation[firstPiece.displayId];
+        if (!gondolaId) continue;
+
+        const minDims = mod.pieces.map(p => Math.min(p.comprimento, p.largura));
+        const space = Math.max(...minDims) + 80;
+
+        let g = tempG.find(gx => gx.id === gondolaId);
+        if (!g) {
+          if (gondolaId.startsWith('Transbordo Excedente')) {
+            g = {
+              id: gondolaId,
+              capacity: 5530,
+              historical: 0,
+              current: 0,
+              used: (reservations[gondolaId] || 0) + (gondolaExtraSpaces[gondolaId] || 0),
+              reserved: reservations[gondolaId] || 0,
+              isSpecial: true,
+              isTemporary: true
+            };
+            tempG.push(g);
+          }
+        }
+        if (g) {
+          g.used += space;
+          g.current += space;
+        }
+      }
+    }
+    
+    setGondolas(tempG);
+  }, [environments, allocation, historicalState, suspendedProjects, gondolaExtraSpaces]);
 
   // --- CAPTURA GLOBAL DA PISTOLA USB ---
   useEffect(() => {
@@ -796,12 +865,17 @@ export default function App() {
         if (!mod.pieces || mod.pieces.length === 0) continue;
         
         const firstPiece = mod.pieces[0];
-        const gondolaId = allocation[firstPiece.displayId];
+        // Look up by module key first (safe from SEM_CODIGO collisions), fallback to displayId
+        const gondolaId = allocation[`${envName}_${modId}`] || allocation[firstPiece.displayId];
         if (!gondolaId) continue;
 
         const minDims = mod.pieces.map(p => Math.min(p.comprimento, p.largura));
         const maxWidth = Math.max(...minDims);
         const space = maxWidth + SPACING; // SPACING é 80
+        
+        const maxL = Math.max(...mod.pieces.map(p => p.comprimento));
+        const maxW = Math.max(...mod.pieces.map(p => p.largura));
+        const realSpace = `${maxL} x ${maxW} mm`;
 
         if (!gondolaGroups[gondolaId]) {
           gondolaGroups[gondolaId] = {
@@ -815,10 +889,17 @@ export default function App() {
         // Evitar duplicar o mesmo módulo ID na mesma gôndola se vier de múltiplas iterações
         const exists = gondolaGroups[gondolaId].modules.some(m => m.modId === modId);
         if (!exists) {
+          let exportModId = modId;
+          const upperNome = mod.nome.toUpperCase();
+          if (upperNome.includes('GRANDES')) exportModId = modId + '_GRANDES';
+          if (upperNome.includes('GIGANTES')) exportModId = modId + '_GIGANTES';
+          
           gondolaGroups[gondolaId].modules.push({
-            modId: modId,
+            modId: exportModId,
+            modName: mod.nome,
             space: space,
-            pieceCount: mod.pieces.length
+            pieceCount: mod.pieces.length,
+            realSpace: realSpace
           });
         }
       }
@@ -829,8 +910,10 @@ export default function App() {
       environments: Array.from(g.envs).join(', '),
       modules: g.modules.map(m => ({
         modId: m.modId,
+        modName: m.modName,
         space: m.space,
-        pieceCount: m.pieceCount
+        pieceCount: m.pieceCount,
+        realSpace: m.realSpace
       }))
     }));
 
@@ -1109,8 +1192,8 @@ export default function App() {
 
   const handleResumeProject = (name) => {
     if (currentClient && currentClient !== 'Cliente Desconhecido' && projectPieces.length > 0) {
-      alert("Por favor, suspenda ou conclua o projeto ativo atual antes de retomar outro!");
-      return;
+      const confirmMsg = `Você já tem um projeto ativo (${currentClient}). Deseja descartá-lo e retomar o projeto de ${name}?`;
+      if (!window.confirm(confirmMsg)) return;
     }
     
     const found = suspendedProjects.find(p => p.clientName === name);
@@ -1216,7 +1299,7 @@ export default function App() {
             <button onClick={() => {
                 requestPassword("753951", "Senha do Administrador de Engenharia", handleSavePlanilhas);
               }} style={{ 
-                display: 'flex', alignItems: 'center', gap: '0.4rem', background: '#9b59b6', color: 'white', padding: '0.4rem 0.8rem', borderRadius: '0.5rem', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem' 
+                display: 'flex', alignItems: 'center', gap: '0.4rem', background: '#9b59b6', color: 'white', padding: '0.3rem 0.6rem', borderRadius: '0.5rem', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem' 
               }}>
               💾 Salvar Estoque
             </button>
@@ -1225,7 +1308,7 @@ export default function App() {
                   setScannedPieces([]); setLastScanned(null); setRejectedPieces([]);
                 });
               }} style={{
-                background: 'rgba(255, 255, 255, 0.08)', color: 'var(--text-main)', padding: '0.4rem 0.8rem', borderRadius: '0.5rem', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem'
+                background: 'rgba(255, 255, 255, 0.08)', color: 'var(--text-main)', padding: '0.3rem 0.6rem', borderRadius: '0.5rem', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem'
               }}>
               🔁 Resetar Bipagem
             </button>
@@ -1234,7 +1317,7 @@ export default function App() {
                   setShowZerarModal(true);
                 });
               }} style={{
-                background: 'var(--error)', color: 'white', padding: '0.4rem 0.8rem', borderRadius: '0.5rem', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.3rem'
+                background: 'var(--error)', color: 'white', padding: '0.3rem 0.6rem', borderRadius: '0.5rem', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.3rem'
               }}>
               <AlertTriangle size={12} /> Zerar Fábrica
             </button>
@@ -1246,17 +1329,17 @@ export default function App() {
           {/* FLUXO DE TRABALHO DO OPERADOR (Ações Diárias Cronológicas) */}
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
             <button onClick={handleAtualizarPlanilha} disabled={isUpdatingReport} style={{ 
-                display: 'flex', alignItems: 'center', gap: '0.4rem', background: 'var(--primary)', color: 'white', padding: '0.5rem 1.25rem', borderRadius: '9999px', border: 'none', cursor: isUpdatingReport ? 'not-allowed' : 'pointer', fontWeight: 'bold', opacity: isUpdatingReport ? 0.7 : 1, fontSize: '0.85rem' 
+                display: 'flex', alignItems: 'center', gap: '0.4rem', background: 'var(--primary)', color: 'white', padding: '0.4rem 1rem', borderRadius: '9999px', border: 'none', cursor: isUpdatingReport ? 'not-allowed' : 'pointer', fontWeight: 'bold', opacity: isUpdatingReport ? 0.7 : 1, fontSize: '0.85rem' 
               }}>
               {isUpdatingReport ? 'Carregando...' : '📊 Enviar Relatório'}
             </button>
             <button onClick={handleSuspendCurrentProject} style={{ 
-                display: 'flex', alignItems: 'center', gap: '0.4rem', background: '#e67e22', color: 'white', padding: '0.5rem 1.25rem', borderRadius: '9999px', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem' 
+                display: 'flex', alignItems: 'center', gap: '0.4rem', background: '#e67e22', color: 'white', padding: '0.4rem 1rem', borderRadius: '9999px', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem' 
               }}>
               ⏸️ Suspender Projeto
             </button>
             <button onClick={handleCompleteCurrentProject} style={{ 
-                display: 'flex', alignItems: 'center', gap: '0.4rem', background: '#27ae60', color: 'white', padding: '0.5rem 1.5rem', borderRadius: '9999px', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.9rem', boxShadow: '0 0 12px rgba(39, 174, 96, 0.4)' 
+                display: 'flex', alignItems: 'center', gap: '0.4rem', background: '#27ae60', color: 'white', padding: '0.4rem 1.25rem', borderRadius: '9999px', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.9rem', boxShadow: '0 0 12px rgba(39, 174, 96, 0.4)' 
               }}>
               ✅ Concluir Projeto
             </button>
